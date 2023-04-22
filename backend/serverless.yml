@@ -1,0 +1,213 @@
+org: ariapahlavan
+app: ap-storage
+service: serverless-storage-app
+
+plugins:
+  - serverless-webpack
+  - serverless-iam-roles-per-function
+  - serverless-plugin-tracing
+
+provider:
+  name: aws
+  runtime: nodejs12.x
+  lambdaHashingVersion: '20201221'
+
+  stage: ${opt:stage, 'dev'}
+  region: ${opt:region, 'us-east-1'}
+
+  tracing:
+    lambda: true
+    apiGateway: true
+
+  environment:
+    STORAGE_TABLE: File-Storage-${self:provider.stage}
+    STORAGE_CREATED_AT_INDEX: CreatedAtIndex
+    FILE_ATTACHMENT_S3_BUCKET: serverless-storage-files-703183150069-${self:provider.stage}
+    SIGNED_URL_EXPIRATION: 300
+
+  logs:
+    # Enable API Gateway logs
+    restApi: true
+
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - xray:PutTelemetryRecords
+            - xray:PutTraceSegments
+          Resource: "*"
+
+
+functions:
+
+  Auth:
+    handler: src/lambda/auth/auth0Authorizer.handler
+
+  GetFiles:
+    handler: src/lambda/http/getFiles.handler
+    events:
+      - http:
+          method: get
+          path: files
+          cors: true
+          authorizer: Auth
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.STORAGE_TABLE}
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.STORAGE_TABLE}/index/${self:provider.environment.STORAGE_CREATED_AT_INDEX}
+
+  CreateFile:
+    handler: src/lambda/http/createFile.handler
+    events:
+      - http:
+          method: post
+          path: files
+          cors: true
+          authorizer: Auth
+          request:
+            schema:
+              application/json: ${file(models/create-files-model.json)}
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:PutItem
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.STORAGE_TABLE}
+
+  UpdateFile:
+    handler: src/lambda/http/updateFile.handler
+    events:
+      - http:
+          method: patch
+          path: files/{fileId}
+          cors: true
+          authorizer: Auth
+          request:
+            schema:
+              application/json: ${file(models/update-file-model.json)}
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:UpdateItem
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.STORAGE_TABLE}
+
+  DeleteFile:
+    handler: src/lambda/http/deleteFile.handler
+    events:
+      - http:
+          method: delete
+          path: files/{fileId}
+          cors: true
+          authorizer: Auth
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:DeleteItem
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.STORAGE_TABLE}
+
+  GenerateUploadUrl:
+    handler: src/lambda/http/generateUploadUrl.handler
+    events:
+      - http:
+          method: post
+          path: files/{fileId}/attachment
+          cors: true
+          authorizer: Auth
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:PutItem
+          - dynamodb:UpdateItem
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.STORAGE_TABLE}
+      - Effect: Allow
+        Action:
+          - s3:GetObject
+          - s3:PutObject
+        Resource: arn:aws:s3:::${self:provider.environment.FILE_ATTACHMENT_S3_BUCKET}/*
+
+resources:
+  Resources:
+    GatewayResponseDefault4XX:
+      Type: AWS::ApiGateway::GatewayResponse
+      Properties:
+        ResponseParameters:
+          gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+          gatewayresponse.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+          gatewayresponse.header.Access-Control-Allow-Methods: "'GET,OPTIONS,POST'"
+        ResponseType: DEFAULT_4XX
+        RestApiId:
+          Ref: ApiGatewayRestApi
+
+    RequestBodyValidator:
+      Type: AWS::ApiGateway::RequestValidator
+      Properties:
+        Name: 'request-body-validator'
+        RestApiId:
+          Ref: ApiGatewayRestApi
+        ValidateRequestBody: true
+        ValidateRequestParameters: false
+
+    StorageTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: fileId
+            AttributeType: S
+          - AttributeName: userId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: fileId
+            KeyType: HASH
+          - AttributeName: userId
+            KeyType: RANGE
+        GlobalSecondaryIndexes:
+          - IndexName: ${self:provider.environment.STORAGE_CREATED_AT_INDEX}
+            KeySchema:
+              - AttributeName: userId
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+        BillingMode: PAY_PER_REQUEST
+        StreamSpecification:
+          StreamViewType: NEW_IMAGE
+        TableName: ${self:provider.environment.STORAGE_TABLE}
+
+    FilesBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:provider.environment.FILE_ATTACHMENT_S3_BUCKET}
+        CorsConfiguration:
+          CorsRules:
+            - AllowedOrigins:
+                - '*'
+              AllowedHeaders:
+                - '*'
+              AllowedMethods:
+                - GET
+                - PUT
+                - POST
+                - DELETE
+                - HEAD
+              MaxAge: 3000
+
+    BucketPolicy:
+      Type: AWS::S3::BucketPolicy
+      Properties:
+        PolicyDocument:
+          Id: MyPolicy
+          Version: "2012-10-17"
+          Statement:
+            - Sid: PublicReadForGetBucketObjects
+              Effect: Allow
+              Principal: '*'
+              Action: 's3:GetObject'
+              Resource: 'arn:aws:s3:::${self:provider.environment.FILE_ATTACHMENT_S3_BUCKET}/*'
+        Bucket: !Ref FilesBucket
