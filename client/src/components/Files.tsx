@@ -14,7 +14,7 @@ import {
   Loader
 } from 'semantic-ui-react'
 
-import { createFile, deleteFile, getFiles, patchFile } from '../api/files-api'
+import { createFile, deleteFile, getFiles, getUploadUrl, patchFile, uploadFile } from '../api/files-api'
 import Auth from '../auth/Auth'
 import { File } from '../types/File'
 
@@ -22,41 +22,68 @@ interface FilesProps {
   auth: Auth
   history: History
 }
+enum CreateState {
+  NoCreate,
+  Creating,
+  FetchingPresignedUrl,
+  UploadingFile,
+}
 
 interface FilesState {
   files: File[]
   newFileName: string
-  loadingFiles: boolean
+  loadingFiles: boolean,
+  createState: CreateState,
+  file: any,
 }
 
 export class Files extends React.PureComponent<FilesProps, FilesState> {
   state: FilesState = {
     files: [],
     newFileName: '',
-    loadingFiles: true
+    loadingFiles: true,
+    createState: CreateState.NoCreate,
+    file: undefined,
   }
 
   handleNameChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     this.setState({ newFileName: event.target.value })
   }
 
-  onEditButtonClick = (fileId: string) => {
-    this.props.history.push(`/files/${fileId}/edit`)
+  onEditButtonClick = (file: File) => {
+    this.props.history.push(`/files/${file.fileId}/${file.name}/edit`)
   }
 
-  onFileCreate = async (event: React.ChangeEvent<HTMLButtonElement>) => {
+  onFileCreate = async (event: React.MouseEvent<HTMLButtonElement>) => {
+    this.setCreateState(CreateState.Creating);
     try {
+      if (!this.state.newFileName) {
+        alert('File name is required')
+        return
+      }
+      if (!this.state.file) {
+        alert('File should be selected')
+        return
+      }
       const dueDate = this.calculateDueDate()
       const newFile = await createFile(this.props.auth.getIdToken(), {
-        name: this.state.newFileName,
-        fileUrl: '' // TODO: generate and add file url here
+        name: this.state.newFileName
       })
+      this.setCreateState(CreateState.FetchingPresignedUrl);
+      const fileId = newFile.fileId;
+      const uploadUrl = await getUploadUrl(this.props.auth.getIdToken(), fileId);
+      this.setCreateState(CreateState.UploadingFile);
+      await uploadFile(uploadUrl, this.state.file)
+
       this.setState({
         files: [...this.state.files, newFile],
         newFileName: ''
       })
+      alert('File was created!')
     } catch {
       alert('File creation failed')
+    } finally {
+      this.setCreateState(CreateState.NoCreate);
     }
   }
 
@@ -71,21 +98,12 @@ export class Files extends React.PureComponent<FilesProps, FilesState> {
     }
   }
 
-  onFileCheck = async (pos: number) => {
-    try {
-      const file = this.state.files[pos]
-      await patchFile(this.props.auth.getIdToken(), file.fileId, {
-        name: file.name
-      })
-      // TODO: Update displayed name if needed
-      // this.setState({
-      //   files: update(this.state.files, {
-      //     [pos]: { done: { $set: !file.done } }
-      //   })
-      // })
-    } catch {
-      alert('File deletion failed')
-    }
+  handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files
+    if (!files) return
+    this.setState({
+      file: files[0]
+    })
   }
 
   async componentDidMount() {
@@ -116,19 +134,22 @@ export class Files extends React.PureComponent<FilesProps, FilesState> {
     return (
       <Grid.Row>
         <Grid.Column width={16}>
-          <Input
-            action={{
-              color: 'teal',
-              labelPosition: 'left',
-              icon: 'add',
-              content: 'New task',
-              onClick: this.onFileCreate
-            }}
-            fluid
-            actionPosition="left"
-            placeholder="To change the world..."
-            onChange={this.handleNameChange}
-          />
+          <Input type="text" placeholder="Filename..."
+                 onChange={this.handleNameChange}>
+            <Button color={'teal'} type="submit"
+                    loading={this.state.createState !== CreateState.NoCreate}
+                    onClick={this.onFileCreate}>Upload new file</Button>
+            <input />
+            <input
+              type="file"
+              accept="image/*"
+              placeholder="File to upload"
+              onChange={this.handleFileChange}
+            />
+          </Input>
+          {this.state.createState === CreateState.Creating && <p>Creating your file object</p>}
+          {this.state.createState === CreateState.FetchingPresignedUrl && <p>Uploading file metadata</p>}
+          {this.state.createState === CreateState.UploadingFile && <p>Uploading file</p>}
         </Grid.Column>
         <Grid.Column width={16}>
           <Divider />
@@ -161,23 +182,14 @@ export class Files extends React.PureComponent<FilesProps, FilesState> {
         {this.state.files.map((file, pos) => {
           return (
             <Grid.Row key={file.fileId}>
-              {/*<Grid.Column width={1} verticalAlign="middle">*/}
-              {/*  <Checkbox*/}
-              {/*    onChange={() => this.onFileCheck(pos)}*/}
-              {/*    checked={file.done}*/}
-              {/*  />*/}
-              {/*</Grid.Column>*/}
-              <Grid.Column width={10} verticalAlign="middle">
+              <Grid.Column width={14} verticalAlign="middle">
                 {file.name}
               </Grid.Column>
-              {/*<Grid.Column width={3} floated="right">*/}
-              {/*  {file.dueDate}*/}
-              {/*</Grid.Column>*/}
               <Grid.Column width={1} floated="right">
                 <Button
                   icon
                   color="blue"
-                  onClick={() => this.onEditButtonClick(file.fileId)}
+                  onClick={() => this.onEditButtonClick(file)}
                 >
                   <Icon name="pencil" />
                 </Button>
@@ -209,5 +221,9 @@ export class Files extends React.PureComponent<FilesProps, FilesState> {
     date.setDate(date.getDate() + 7)
 
     return dateFormat(date, 'yyyy-mm-dd') as string
+  }
+
+  setCreateState(createState: CreateState) {
+    this.setState({ createState })
   }
 }

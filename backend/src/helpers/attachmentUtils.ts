@@ -8,10 +8,10 @@ const s3 = new XAWS.S3({
   signatureVersion: 'v4'
 });
 
-export const createUploadUrl = (attachmentUrl: string, bucketName: string): string => {
+export const createUploadUrl = (fileId: string, bucketName: string): string => {
   return s3.getSignedUrl('putObject', {
     Bucket: bucketName,
-    Key: attachmentUrl,
+    Key: fileId,
     Expires: urlExpiration
   })
 }

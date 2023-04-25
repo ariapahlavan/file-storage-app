@@ -7,16 +7,10 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 500
-    },
-    "fileUrl": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 500
     }
   },
   "required": [
-    "name",
-    "fileUrl"
+    "name"
   ],
   "additionalProperties": false
 }

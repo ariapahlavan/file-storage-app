@@ -1,26 +1,21 @@
 import * as React from 'react'
 import { Form, Button } from 'semantic-ui-react'
 import Auth from '../auth/Auth'
-import { getUploadUrl, uploadFile } from '../api/files-api'
-
-enum UploadState {
-  NoUpload,
-  FetchingPresignedUrl,
-  UploadingFile,
-}
+import { getUploadUrl, patchFile, uploadFile } from '../api/files-api'
 
 interface EditFileProps {
   match: {
     params: {
-      fileId: string
+      fileId: string,
+      fileName: string
     }
   }
   auth: Auth
 }
 
 interface EditFileState {
-  file: any
-  uploadState: UploadState
+  fileName: string
+  currentFileName: string
 }
 
 export class EditFile extends React.PureComponent<
@@ -28,61 +23,50 @@ export class EditFile extends React.PureComponent<
   EditFileState
 > {
   state: EditFileState = {
-    file: undefined,
-    uploadState: UploadState.NoUpload
+    currentFileName: this.props.match.params.fileName,
+    fileName: ''
   }
 
-  handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files
-    if (!files) return
-
-    this.setState({
-      file: files[0]
-    })
+  handleNameChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    this.setState({ fileName: event.target.value })
   }
 
   handleSubmit = async (event: React.SyntheticEvent) => {
     event.preventDefault()
 
     try {
-      if (!this.state.file) {
-        alert('File should be selected')
+      if (!this.state.fileName) {
+        alert('File name is required')
         return
       }
 
-      this.setUploadState(UploadState.FetchingPresignedUrl)
-      const uploadUrl = await getUploadUrl(this.props.auth.getIdToken(), this.props.match.params.fileId)
+      if (this.state.fileName === this.state.currentFileName) {
+        alert('The new file name must not match the existing name')
+        return
+      }
 
-      this.setUploadState(UploadState.UploadingFile)
-      await uploadFile(uploadUrl, this.state.file)
-
-      alert('File was uploaded!')
+      const fileId = this.props.match.params.fileId;
+      await patchFile(this.props.auth.getIdToken(), fileId, {
+        name: this.state.fileName
+      })
+      alert('File name updated successfully')
     } catch (e) {
-      alert('Could not upload a file: ' + (e as Error).message)
-    } finally {
-      this.setUploadState(UploadState.NoUpload)
+      alert('Could not update the file name: ' + (e as Error).message)
     }
-  }
-
-  setUploadState(uploadState: UploadState) {
-    this.setState({
-      uploadState
-    })
   }
 
   render() {
     return (
       <div>
-        <h1>Upload new file</h1>
+        <h1>Edit file</h1>
 
         <Form onSubmit={this.handleSubmit}>
           <Form.Field>
             <label>File</label>
             <input
-              type="file"
-              accept="image/*" // TODO what should this be?
-              placeholder="File to upload"
-              onChange={this.handleFileChange}
+              type="text"
+              placeholder={this.state.currentFileName}
+              onChange={this.handleNameChange}
             />
           </Form.Field>
 
@@ -96,13 +80,10 @@ export class EditFile extends React.PureComponent<
 
     return (
       <div>
-        {this.state.uploadState === UploadState.FetchingPresignedUrl && <p>Uploading file metadata</p>}
-        {this.state.uploadState === UploadState.UploadingFile && <p>Uploading file</p>}
         <Button
-          loading={this.state.uploadState !== UploadState.NoUpload}
           type="submit"
         >
-          Upload
+          Update file name
         </Button>
       </div>
     )
