@@ -3,7 +3,7 @@ import 'source-map-support/register'
 import * as middy from 'middy'
 import { cors } from 'middy/middlewares'
 import { getUserId } from '../utils';
-import { createFile } from '../../helpers/files';
+import { createFile } from '../../helpers/businessLogic/files';
 import { FileItem } from '../../models/FileItem'
 import { CreateFileRequest } from '../../requests/CreateFileRequest'
 

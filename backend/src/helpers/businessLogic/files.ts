@@ -1,11 +1,11 @@
-import { FilesAccess } from './filesAccess'
-import { createUploadUrl } from './attachmentUtils';
-import { createLogger } from '../utils/logger'
+import { FilesAccess } from '../dataLayer/filesAccess'
+import { createUploadUrl } from '../attachmentUtils';
+import { createLogger } from '../../utils/logger'
 import * as uuid from 'uuid'
 import * as createError from 'http-errors'
-import { FileItem } from '../models/FileItem'
-import { CreateFileRequest } from '../requests/CreateFileRequest'
-import { UpdateFileRequest } from '../requests/UpdateFileRequest'
+import { FileItem } from '../../models/FileItem'
+import { CreateFileRequest } from '../../requests/CreateFileRequest'
+import { UpdateFileRequest } from '../../requests/UpdateFileRequest'
 
 
 const logger = createLogger('Files');
@@ -58,8 +58,6 @@ export const deleteFile = async (fileId: string, userId: string) => {
 
 export const createAttachmentPresignedUrl = async (fileId: string, userId: string): Promise<string> => {
   await validateExistingFileItem(fileId, userId);
-  // const attachmentUrl: string = `https://${attachmentBucketName}.s3.amazonaws.com/${fileId}`;
-  // await filesAccess.addFileAttachmentById(fileId, userId, attachmentUrl)
 
   return createUploadUrl(fileId, attachmentBucketName);
 }

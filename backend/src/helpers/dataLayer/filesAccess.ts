@@ -1,9 +1,9 @@
 import * as AWS from 'aws-sdk'
 import * as AWSXRay from 'aws-xray-sdk'
 import { DocumentClient } from 'aws-sdk/clients/dynamodb'
-import { createLogger } from '../utils/logger'
-import { FileItem } from '../models/FileItem'
-import { FileUpdate } from '../models/FileUpdate'
+import { createLogger } from '../../utils/logger'
+import { FileItem } from '../../models/FileItem'
+import { FileUpdate } from '../../models/FileUpdate'
 
 const XAWS = AWSXRay.captureAWS(AWS)
 
