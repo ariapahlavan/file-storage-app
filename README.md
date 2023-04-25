@@ -1,2 +1,2 @@
-# thick-safe
+# File storage app
 Yet another file storage app
